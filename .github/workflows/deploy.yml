@@ -29,12 +29,14 @@ jobs:
         run: |
           set -e
           rm -rf "$GITHUB_WORKSPACE/source"
-          GIT_LFS_SKIP_SMUDGE=1 git clone --depth=1 "https://x-access-token:${APP_TOKEN}@github.com/Innei-dev/Yohaku.git" "$GITHUB_WORKSPACE/source"
-          if command -v git-lfs >/dev/null 2>&1; then
-            cd "$GITHUB_WORKSPACE/source"
-            git lfs install --local
-            git lfs pull
-          fi
+          mkdir -p "$GITHUB_WORKSPACE/source"
+          curl -fsSL \
+            -H "Authorization: Bearer ${APP_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -L "https://api.github.com/repos/Innei-dev/Yohaku/tarball" \
+            -o "$GITHUB_WORKSPACE/source.tar.gz"
+          tar xzf "$GITHUB_WORKSPACE/source.tar.gz" --strip-components=1 -C "$GITHUB_WORKSPACE/source"
+          rm -f "$GITHUB_WORKSPACE/source.tar.gz"
 
       - name: Read deployed hash
         id: read_hash
@@ -46,12 +48,16 @@ jobs:
 
       - name: Compare current hash
         id: compare
-        working-directory: ${{ github.workspace }}/source
+        shell: bash
         env:
           FILE_HASH: ${{ steps.read_hash.outputs.hash_content }}
-        shell: bash
+          APP_TOKEN: ${{ secrets.GH_PAT }}
         run: |
-          current_hash=$(git rev-parse --short HEAD)
+          current_hash=$(curl -fsSL \
+            -H "Authorization: Bearer ${APP_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/Innei-dev/Yohaku/commits?per_page=1" \
+            | python3 -c 'import json,sys; data=json.load(sys.stdin); print(data[0]["sha"][:7])')
           echo "current_hash=$current_hash" >> "$GITHUB_OUTPUT"
           echo "File Hash: $FILE_HASH"
           echo "Current Git Hash: $current_hash"
@@ -70,7 +76,6 @@ jobs:
           node -v
           npm -v
           pnpm -v
-          git lfs version
 
       - name: Install dependencies
         if: steps.compare.outputs.skip != 'true'
