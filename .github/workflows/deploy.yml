@@ -153,7 +153,7 @@ jobs:
         run: cp pm2/ecosystem.config.js ecosystem.config.js
 
       - name: Prepare rollback script
-        run: cp rollback.sh rollback.sh
+        run: chmod +x rollback.sh
 
       - name: copy file via ssh password
         uses: appleboy/scp-action@v0.1.7
