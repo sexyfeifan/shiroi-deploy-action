@@ -13,7 +13,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  HASH_FILE: build_hash
+  HASH_FILE: /root/shiro/build_hash
 
 jobs:
   deploy:
@@ -22,15 +22,13 @@ jobs:
     if: ${{ github.event.head_commit.message != 'Update hash file' }}
 
     steps:
-      - name: Prepare repositories
+      - name: Prepare source
         shell: bash
         env:
-          DEPLOY_TOKEN: ${{ github.token }}
           APP_TOKEN: ${{ secrets.GH_PAT }}
         run: |
           set -e
-          rm -rf "$GITHUB_WORKSPACE/deploy" "$GITHUB_WORKSPACE/source"
-          git clone --depth=1 "https://x-access-token:${DEPLOY_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$GITHUB_WORKSPACE/deploy"
+          rm -rf "$GITHUB_WORKSPACE/source"
           GIT_LFS_SKIP_SMUDGE=1 git clone --depth=1 "https://x-access-token:${APP_TOKEN}@github.com/Innei-dev/Yohaku.git" "$GITHUB_WORKSPACE/source"
           if command -v git-lfs >/dev/null 2>&1; then
             cd "$GITHUB_WORKSPACE/source"
@@ -38,11 +36,12 @@ jobs:
             git lfs pull
           fi
 
-      - name: Read HASH_FILE content
+      - name: Read deployed hash
         id: read_hash
         shell: bash
         run: |
-          content=$(cat "$GITHUB_WORKSPACE/deploy/${{ env.HASH_FILE }}" 2>/dev/null || true)
+          mkdir -p "$(dirname "${{ env.HASH_FILE }}")"
+          content=$(cat "${{ env.HASH_FILE }}" 2>/dev/null || true)
           echo "hash_content=$content" >> "$GITHUB_OUTPUT"
 
       - name: Compare current hash
@@ -71,6 +70,7 @@ jobs:
           node -v
           npm -v
           pnpm -v
+          git lfs version
 
       - name: Install dependencies
         if: steps.compare.outputs.skip != 'true'
@@ -85,13 +85,6 @@ jobs:
           NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL }}
           NEXT_PUBLIC_GATEWAY_URL: ${{ secrets.NEXT_PUBLIC_GATEWAY_URL }}
         run: sh ./ci-release-build.sh
-
-      - name: Install PM2 config
-        if: steps.compare.outputs.skip != 'true'
-        shell: bash
-        run: |
-          install -m 644 "$GITHUB_WORKSPACE/deploy/pm2/ecosystem.config.js" "$HOME/shiro/ecosystem.config.js"
-          install -m 755 "$GITHUB_WORKSPACE/deploy/rollback.sh" "$HOME/shiro/rollback.sh"
 
       - name: Deploy locally
         if: steps.compare.outputs.skip != 'true'
@@ -124,21 +117,7 @@ jobs:
           pm2 save
           echo "Deployed successfully"
 
-      - name: Update hash file
+      - name: Update deployed hash
         if: steps.compare.outputs.skip != 'true'
         shell: bash
-        run: echo "${{ steps.compare.outputs.current_hash }}" > "$GITHUB_WORKSPACE/deploy/${{ env.HASH_FILE }}"
-
-      - name: Commit hash file
-        if: steps.compare.outputs.skip != 'true'
-        working-directory: ${{ github.workspace }}/deploy
-        shell: bash
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add ${{ env.HASH_FILE }}
-          if git diff --cached --quiet; then
-            exit 0
-          fi
-          git commit -m "Update hash file"
-          git push
+        run: echo "${{ steps.compare.outputs.current_hash }}" > "${{ env.HASH_FILE }}"
