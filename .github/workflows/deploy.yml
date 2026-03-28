@@ -45,7 +45,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          repository: innei-dev/shiroi
+          repository: Innei-dev/Yohaku
           token: ${{ secrets.GH_PAT }} # `GH_PAT` is a secret that contains your PAT
           fetch-depth: 0
           lfs: true
@@ -81,7 +81,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          repository: innei-dev/shiroi
+          repository: Innei-dev/Yohaku
           token: ${{ secrets.GH_PAT }} # `GH_PAT` is a secret that contains your PAT
           fetch-depth: 0
           lfs: true
@@ -150,6 +150,9 @@ jobs:
       - name: Prepare standalone PM2 config
         run: cp pm2/ecosystem.config.js ecosystem.config.js
 
+      - name: Prepare rollback script
+        run: cp rollback.sh rollback.sh
+
       - name: copy file via ssh password
         uses: appleboy/scp-action@v0.1.7
         with:
@@ -172,6 +175,17 @@ jobs:
           source: 'ecosystem.config.js'
           target: '/tmp/shiro'
 
+      - name: copy rollback script via ssh password
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USER }}
+          password: ${{ secrets.PASSWORD }}
+          key: ${{ secrets.KEY }}
+          port: ${{ secrets.PORT }}
+          source: 'rollback.sh'
+          target: '/tmp/shiro'
+
       - name: Exec deploy script with SSH
         uses: appleboy/ssh-action@master
 
@@ -191,6 +205,7 @@ jobs:
             mkdir -p $basedir/.cache
             mv /tmp/shiro/release.zip $workdir/release.zip
             install -m 644 /tmp/shiro/ecosystem.config.js $basedir/ecosystem.config.js
+            install -m 755 /tmp/shiro/rollback.sh $basedir/rollback.sh
             cd $workdir
             unzip -qq -o $workdir/release.zip
             rm -r /tmp/shiro

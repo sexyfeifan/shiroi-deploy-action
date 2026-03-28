@@ -25,13 +25,13 @@ select folder in "${folders[@]}"; do
   fi
 done
 
-# 检查用户所选的文件夹中是否存在文件 standalone/server.js
-if [ -f "$folder/standalone/server.js" ]; then
+# 检查用户所选的文件夹中是否存在文件 standalone/apps/web/server.js
+if [ -f "$folder/standalone/apps/web/server.js" ]; then
   # 创建软链接到当前目录的 server.js
-  ln -sf "$folder/standalone/server.js" server.js
-  echo "已成功链接 $folder/standalone/server.js 到当前目录的 server.js"
+  ln -sf "$folder/standalone/apps/web/server.js" server.js
+  echo "已成功链接 $folder/standalone/apps/web/server.js 到当前目录的 server.js"
   pm2 reload ecosystem.config.js --update-env
   echo "Rollback successfully."
 else
-  echo "错误：所选文件夹中不存在 standalone/server.js"
+  echo "错误：所选文件夹中不存在 standalone/apps/web/server.js"
 fi
