@@ -30,8 +30,8 @@ jobs:
         run: |
           set -e
           rm -rf "$GITHUB_WORKSPACE/deploy" "$GITHUB_WORKSPACE/source"
-          git clone "https://x-access-token:${DEPLOY_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$GITHUB_WORKSPACE/deploy"
-          git clone "https://x-access-token:${APP_TOKEN}@github.com/Innei-dev/Yohaku.git" "$GITHUB_WORKSPACE/source"
+          git clone --depth=1 "https://x-access-token:${DEPLOY_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$GITHUB_WORKSPACE/deploy"
+          GIT_LFS_SKIP_SMUDGE=1 git clone --depth=1 "https://x-access-token:${APP_TOKEN}@github.com/Innei-dev/Yohaku.git" "$GITHUB_WORKSPACE/source"
           if command -v git-lfs >/dev/null 2>&1; then
             cd "$GITHUB_WORKSPACE/source"
             git lfs install --local
