@@ -1,128 +1,62 @@
-name: Build and Deploy
+name: Build Artifact
 
 on:
   push:
     branches:
       - main
+  workflow_dispatch:
   repository_dispatch:
     types: [trigger-workflow]
 
-permissions: write-all
+permissions:
+  contents: read
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-env:
-  HASH_FILE: /root/shiro/build_hash
-
 jobs:
-  deploy:
-    name: Build and Deploy
-    runs-on: [self-hosted, linux, x64, yohaku]
-    if: ${{ github.event.head_commit.message != 'Update hash file' }}
+  build:
+    name: Build release.zip
+    runs-on: ubuntu-latest
 
     steps:
-      - name: Prepare source
-        shell: bash
-        env:
-          APP_TOKEN: ${{ secrets.GH_PAT }}
-        run: |
-          set -e
-          rm -rf "$GITHUB_WORKSPACE/source"
-          mkdir -p "$GITHUB_WORKSPACE/source"
-          curl -fsSL \
-            -H "Authorization: Bearer ${APP_TOKEN}" \
-            -H "Accept: application/vnd.github+json" \
-            -L "https://api.github.com/repos/Innei-dev/Yohaku/tarball" \
-            -o "$GITHUB_WORKSPACE/source.tar.gz"
-          tar xzf "$GITHUB_WORKSPACE/source.tar.gz" --strip-components=1 -C "$GITHUB_WORKSPACE/source"
-          rm -f "$GITHUB_WORKSPACE/source.tar.gz"
+      - name: Checkout app source
+        uses: actions/checkout@v4
+        with:
+          repository: Innei-dev/Yohaku
+          token: ${{ secrets.GH_PAT }}
+          fetch-depth: 1
+          lfs: true
 
-      - name: Read deployed hash
-        id: read_hash
-        shell: bash
-        run: |
-          mkdir -p "$(dirname "${{ env.HASH_FILE }}")"
-          content=$(cat "${{ env.HASH_FILE }}" 2>/dev/null || true)
-          echo "hash_content=$content" >> "$GITHUB_OUTPUT"
+      - name: Checkout LFS objects
+        run: git lfs checkout
 
-      - name: Compare current hash
-        id: compare
-        shell: bash
-        env:
-          FILE_HASH: ${{ steps.read_hash.outputs.hash_content }}
-          APP_TOKEN: ${{ secrets.GH_PAT }}
-        run: |
-          current_hash=$(curl -fsSL \
-            -H "Authorization: Bearer ${APP_TOKEN}" \
-            -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/Innei-dev/Yohaku/commits?per_page=1" \
-            | python3 -c 'import json,sys; data=json.load(sys.stdin); print(data[0]["sha"][:7])')
-          echo "current_hash=$current_hash" >> "$GITHUB_OUTPUT"
-          echo "File Hash: $FILE_HASH"
-          echo "Current Git Hash: $current_hash"
-          if [ "$FILE_HASH" = "$current_hash" ]; then
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-            echo "Hashes match. Stopping workflow."
-          else
-            echo "skip=false" >> "$GITHUB_OUTPUT"
-            echo "Hashes do not match. Continuing workflow."
-          fi
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
 
-      - name: Verify build tools
-        if: steps.compare.outputs.skip != 'true'
-        shell: bash
-        run: |
-          node -v
-          npm -v
-          pnpm -v
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: pnpm
 
       - name: Install dependencies
-        if: steps.compare.outputs.skip != 'true'
-        working-directory: ${{ github.workspace }}/source
         run: pnpm install
 
       - name: Build project
-        if: steps.compare.outputs.skip != 'true'
-        working-directory: ${{ github.workspace }}/source
         env:
           BASE_URL: ${{ secrets.BASE_URL }}
           NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL }}
           NEXT_PUBLIC_GATEWAY_URL: ${{ secrets.NEXT_PUBLIC_GATEWAY_URL }}
         run: sh ./ci-release-build.sh
 
-      - name: Deploy locally
-        if: steps.compare.outputs.skip != 'true'
-        working-directory: ${{ github.workspace }}/source
-        shell: bash
-        run: |
-          set -e
-          source "$HOME/.bashrc" || true
-          basedir=$HOME/shiro
-          workdir=$basedir/${{ github.run_number }}
-          mkdir -p "$workdir"
-          mkdir -p "$basedir/.cache"
-          cp assets/release.zip "$workdir/release.zip"
-          cd "$workdir"
-          unzip -qq -o "$workdir/release.zip"
-          rm -rf "$workdir/standalone/apps/web/.env"
-          ln -sfn "$basedir/.env" "$workdir/standalone/apps/web/.env"
-          export NEXT_SHARP_PATH=$(npm root -g)/sharp
-          ln -sfn "$workdir/standalone/apps/web/server.js" "$basedir/server.js"
-          mkdir -p "$workdir/standalone/apps/web/.next"
-          rm -rf "$workdir/standalone/apps/web/.next/cache"
-          ln -sfn "$basedir/.cache" "$workdir/standalone/apps/web/.next/cache"
-          cd "$basedir"
-          if pm2 describe Shiroi >/dev/null 2>&1; then
-            pm2 reload ecosystem.config.js --update-env
-          else
-            pm2 start ecosystem.config.js --update-env
-          fi
-          rm -f "$workdir/release.zip"
-          pm2 save
-          echo "Deployed successfully"
+      - name: Verify artifact
+        run: ls -lh assets/release.zip
 
-      - name: Update deployed hash
-        if: steps.compare.outputs.skip != 'true'
-        shell: bash
-        run: echo "${{ steps.compare.outputs.current_hash }}" > "${{ env.HASH_FILE }}"
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: yohaku-release
+          path: assets/release.zip
+          retention-days: 7
